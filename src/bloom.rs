@@ -1,8 +1,8 @@
+use crate::hash::Hashes;
 use fixedbitset::FixedBitSet;
 use std::f64::consts::LN_2;
 use std::fmt::{Debug, Formatter};
-use std::hash::{BuildHasher, Hash, Hasher};
-use std::iter::{once, successors};
+use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
 
 #[derive(Clone)]
@@ -62,38 +62,23 @@ where
     H: BuildHasher,
 {
     pub fn contains(&self, item: &T) -> bool {
-        self.iter_hashes(item).all(|bit| self.bits.contains(bit))
+        let mut hashes = Hashes::new(
+            item,
+            self.bits.len() as u64,
+            self.num_hashes,
+            &self.build_hasher,
+        );
+        hashes.all(|h| self.bits.contains(h))
     }
 
     pub fn insert(&mut self, item: &T) -> bool {
-        !self
-            .iter_hashes(item)
-            .fold(true, |acc, bit| acc & self.bits.put(bit))
-    }
-
-    fn iter_hashes(&self, item: &T) -> impl Iterator<Item = usize> {
-        let h1 = self.base_hash(item, 1);
-        let h2 = self.base_hash(item, 2);
-        let num_hashes = self.num_hashes as u64;
-
-        once(h1)
-            .chain(once(h2))
-            .chain(
-                successors(Some((h1, h2, 3u64)), |(a, b, i): &(u64, u64, u64)| {
-                    Some((*b, a.wrapping_add(b.wrapping_mul(*i)), i + 1))
-                })
-                .skip(1)
-                .map(|(_, h, _)| h),
-            )
-            .map(move |h| (h % num_hashes) as usize)
-            .take(self.num_hashes)
-    }
-
-    fn base_hash(&self, item: &T, i: usize) -> u64 {
-        let mut hasher = self.build_hasher.build_hasher();
-        hasher.write_usize(i);
-        item.hash(&mut hasher);
-        hasher.finish()
+        let hashes = Hashes::new(
+            item,
+            self.bits.len() as u64,
+            self.num_hashes,
+            &self.build_hasher,
+        );
+        !hashes.fold(true, |acc, bit| acc & self.bits.put(bit))
     }
 }
 
