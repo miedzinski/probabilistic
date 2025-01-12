@@ -25,11 +25,11 @@ impl<T, H> BloomFilter<T, H> {
         }
     }
 
-    pub fn from_probability(num_items: usize, probability: f64, build_hasher: H) -> Self {
+    pub fn with_probability(num_items: usize, probability: f64, build_hasher: H) -> Self {
         assert!(num_items > 0, "num_items must be > 0");
         assert!(
             0. < probability && probability < 1.,
-            "probability must be in range (0, 1)"
+            "probability must be in the range (0, 1)"
         );
         let bits = (-1. * num_items as f64 * probability / (LN_2 * LN_2)).ceil() as usize;
         let num_hashes = (-1. * probability / LN_2).ceil() as usize;

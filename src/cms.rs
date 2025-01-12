@@ -31,15 +31,26 @@ where
         }
     }
 
-    pub fn from_error_bounds(epsilon: f64, delta: f64, build_hasher: H) -> Self {
+    pub fn with_error_bounds(epsilon: f64, delta: f64, build_hasher: H) -> Self {
         assert!(
             0. < epsilon && epsilon <= 1.,
-            "epsilon must be in range (0, 1]"
+            "epsilon must be in the range (0, 1]"
         );
-        assert!(0. < delta && delta < 1., "delta must be in range (0, 1)");
+        assert!(
+            0. < delta && delta < 1.,
+            "delta must be in the range (0, 1)"
+        );
         let width = (E / epsilon).ceil() as usize;
         let depth = (1. / delta).ceil() as usize;
         Self::new(width, depth, build_hasher)
+    }
+
+    pub fn width(&self) -> usize {
+        self.width
+    }
+
+    pub fn depth(&self) -> usize {
+        self.depth
     }
 
     pub fn clear(&mut self) {
