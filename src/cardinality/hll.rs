@@ -1,3 +1,4 @@
+use crate::cardinality::Cardinality;
 use std::fmt::{Debug, Formatter};
 use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
@@ -36,14 +37,27 @@ impl<T, H> HyperLogLog<T, H> {
     pub fn precision(&self) -> usize {
         self.precision
     }
+
+    fn alpha(&self) -> f64 {
+        let m = self.registers.count();
+        if m >= 128 {
+            0.7213 / (1. + 1.079 / m as f64)
+        } else if m == 64 {
+            0.709
+        } else if m == 32 {
+            0.697
+        } else {
+            0.673
+        }
+    }
 }
 
-impl<T, H> HyperLogLog<T, H>
+impl<T, H> Cardinality<T> for HyperLogLog<T, H>
 where
     T: Hash,
     H: BuildHasher,
 {
-    pub fn count(&self) -> f64 {
+    fn count(&self) -> f64 {
         let (v, z) = self.registers.iter().fold((0, 0.), |(v, z), register| {
             (
                 v + if register == 0 { 1 } else { 0 },
@@ -63,24 +77,11 @@ where
         }
     }
 
-    pub fn insert(&mut self, item: &T) {
+    fn insert(&mut self, item: &T) {
         let hash = self.build_hasher.hash_one(item);
         let index = (hash >> (64 - self.precision)) as usize;
         let zeros = ((hash << self.precision) | (1 << (self.precision - 1))).leading_zeros();
         self.registers.update_max(index, zeros as u8 + 1);
-    }
-
-    fn alpha(&self) -> f64 {
-        let m = self.registers.count();
-        if m >= 128 {
-            0.7213 / (1. + 1.079 / m as f64)
-        } else if m == 64 {
-            0.709
-        } else if m == 32 {
-            0.697
-        } else {
-            0.673
-        }
     }
 }
 

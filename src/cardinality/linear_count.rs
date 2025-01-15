@@ -1,4 +1,6 @@
+use crate::cardinality::Cardinality;
 use fixedbitset::FixedBitSet;
+use std::fmt::{Debug, Formatter};
 use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
 
@@ -20,12 +22,12 @@ impl<T, H> LinearCount<T, H> {
     }
 }
 
-impl<T, H> LinearCount<T, H>
+impl<T, H> Cardinality<T> for LinearCount<T, H>
 where
     T: Hash,
     H: BuildHasher,
 {
-    pub fn count(&self) -> f64 {
+    fn count(&self) -> f64 {
         let m = self.bits.len() as f64;
         if self.zeros > 0 {
             -m * (self.zeros as f64 / m).ln()
@@ -34,11 +36,17 @@ where
         }
     }
 
-    pub fn insert(&mut self, item: &T) {
+    fn insert(&mut self, item: &T) {
         let hash = self.build_hasher.hash_one(item);
         let index = hash as usize % self.bits.len();
         if !self.bits.put(index) {
             self.zeros += 1;
         }
+    }
+}
+
+impl<T, H> Debug for LinearCount<T, H> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LinearCount {{ num_bits: {} }}", self.bits.len())
     }
 }
