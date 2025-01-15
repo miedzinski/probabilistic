@@ -3,7 +3,7 @@ use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
 
 pub struct HyperLogLog<T, H> {
-    registers: Registers,
+    registers: Registers<6>,
     precision: usize,
     build_hasher: H,
     _phantom: PhantomData<T>,
@@ -50,8 +50,8 @@ where
     pub fn insert(&mut self, item: &T) {
         let hash = self.build_hasher.hash_one(item);
         let index = (hash >> (64 - self.precision)) as usize;
-        let rho = ((hash << self.precision).leading_zeros() + 1) as RegisterBlock;
-        self.registers.update_max(index, rho);
+        let zeros = ((hash << self.precision) | (1 << (self.precision - 1))).leading_zeros();
+        self.registers.update_max(index, zeros as u8 + 1);
     }
 }
 
@@ -61,49 +61,75 @@ impl<T, H> Debug for HyperLogLog<T, H> {
     }
 }
 
-type RegisterBlock = u16;
-
-const REGISTER_SIZE: u32 = 5;
-const REGISTERS_IN_BLOCK: u32 = RegisterBlock::BITS / REGISTER_SIZE;
-const MASK: RegisterBlock = (1 << REGISTER_SIZE) - 1;
-
-struct Registers {
-    blocks: Vec<RegisterBlock>,
+struct Registers<const N: usize> {
+    buf: Vec<u8>,
     count: usize,
 }
 
-impl Registers {
+impl<const N: usize> Registers<N> {
+    const REGISTER_LENGTH_OK: () = assert!(0 < N && N <= 8);
+    const MASK: u8 = (1 << N) - 1;
+
     fn new(count: usize) -> Self {
-        let num_blocks = (count as f64 / REGISTERS_IN_BLOCK as f64).ceil();
+        // Add a binding to enforce a compile-time assertion.
+        #[allow(clippy::let_unit_value)]
+        let _ = Self::REGISTER_LENGTH_OK;
+
+        assert!(count > 0, "count must be > 0");
+        // Allocate 1 extra byte for safe indexing byte pairs.
+        let num_bytes = (((N * count) as f64) / 8f64).ceil() as usize + 1;
+
         Self {
-            blocks: vec![0; num_blocks as usize],
+            buf: vec![0; num_bytes],
             count,
         }
     }
 
     fn iter(&self) -> impl Iterator<Item = u8> + '_ {
-        self.blocks
-            .iter()
-            .flat_map(|block| {
-                (0..REGISTERS_IN_BLOCK).map(move |i| {
-                    let shift = i * REGISTER_SIZE;
-                    ((block >> shift) & MASK) as u8
-                })
-            })
-            .take(self.count)
+        (0..self.count).map(move |index| {
+            // SAFETY: `index` is bound by registers count
+            unsafe { self.get_unchecked(index) }
+        })
     }
 
-    fn update_max(&mut self, index: usize, value: RegisterBlock) {
+    fn update_max(&mut self, index: usize, value: u8) {
         assert!(index < self.count, "index out of bounds");
-        let (block_index, shift) = (
-            index / REGISTERS_IN_BLOCK as usize,
-            (REGISTER_SIZE * (index as u32 % REGISTERS_IN_BLOCK)) as RegisterBlock,
-        );
-        let current = (self.blocks[block_index] >> shift) & MASK;
-        if value > current {
-            self.blocks[block_index] =
-                (self.blocks[block_index] & !(MASK << shift)) | (value as RegisterBlock) << shift;
+        unsafe {
+            // SAFETY: just checked that `index` is in bounds
+            let current = self.get_unchecked(index);
+            if value > current {
+                self.set_unchecked(index, value);
+            }
         }
+    }
+
+    unsafe fn get_unchecked(&self, index: usize) -> u8 {
+        let (byte_index, offset) = Self::index_and_offset(index);
+        let (first, second) = (
+            self.buf.get_unchecked(byte_index),
+            self.buf.get_unchecked(byte_index + 1),
+        );
+        let first_shifted = first >> offset;
+        // TODO: Replace u16 cast with u8::unbounded_shl once it stabilizes.
+        let second_shifted = ((*second as u16) << (8 - offset)) as u8;
+        (first_shifted | second_shifted) & Self::MASK
+    }
+
+    unsafe fn set_unchecked(&mut self, index: usize, value: u8) {
+        let (byte_index, offset) = Self::index_and_offset(index);
+        let value_masked = value & Self::MASK;
+        {
+            let first = self.buf.get_unchecked_mut(byte_index);
+            let first_cleared = *first & !(Self::MASK << offset);
+            *first = first_cleared | (value_masked << offset);
+        }
+        let second = self.buf.get_unchecked_mut(byte_index + 1);
+        let second_cleared = *second & !(Self::MASK >> (8 - offset));
+        *second = second_cleared | (value_masked >> (8 - offset));
+    }
+
+    fn index_and_offset(index: usize) -> (usize, usize) {
+        (N * index / 8, N * index % 8)
     }
 }
 
@@ -111,23 +137,28 @@ impl Registers {
 mod tests {
     use super::*;
 
-    impl Registers {
-        fn with_blocks_and_count(blocks: Vec<RegisterBlock>, count: usize) -> Registers {
-            Registers { blocks, count }
+    impl<const N: usize> Registers<N> {
+        pub fn with_buf_and_count(buf: Vec<u8>, count: usize) -> Self {
+            Self { buf, count }
         }
     }
 
+    fn make_registers() -> Registers<5> {
+        let buf = vec![0b101_11000, 0b1_10001_00, 0b1011_0010, 0b1, 0];
+        Registers::with_buf_and_count(buf, 5)
+    }
+
     #[test]
-    fn test_number_of_blocks() {
-        assert_eq!(Registers::new(0).blocks.len(), 0);
-        assert_eq!(Registers::new(6).blocks.len(), 2);
-        assert_eq!(Registers::new(7).blocks.len(), 3);
+    fn test_buffer_size() {
+        assert_eq!(Registers::<5>::new(1).buf.len(), 2);
+        assert_eq!(Registers::<5>::new(6).buf.len(), 5);
+        assert_eq!(Registers::<5>::new(8).buf.len(), 6);
+        assert_eq!(Registers::<6>::new(10).buf.len(), 9);
     }
 
     #[test]
     fn test_iter() {
-        let blocks = vec![0b10001_00101_11000, 0b00000_11011_00101];
-        let registers = Registers::with_blocks_and_count(blocks, 5);
+        let registers = make_registers();
 
         assert_eq!(
             registers.iter().collect::<Vec<_>>(),
@@ -137,14 +168,13 @@ mod tests {
 
     #[test]
     fn test_update_max() {
-        let blocks = vec![0b10001_00101_11000, 0b00000_11011_00101];
-        let mut registers = Registers::with_blocks_and_count(blocks, 5);
+        let mut registers = make_registers();
+        let expected = vec![0b011_11000, 0b1_10001_01, 0b1011_0010, 0b1, 0];
 
         registers.update_max(1, 0b01011);
-        let expected = vec![0b10001_01011_11000, 0b00000_11011_00101];
-        assert_eq!(registers.blocks, expected);
+        assert_eq!(registers.buf, expected);
 
         registers.update_max(3, 0b00011);
-        assert_eq!(registers.blocks, expected);
+        assert_eq!(registers.buf, expected);
     }
 }
