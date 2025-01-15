@@ -51,6 +51,10 @@ impl<T, H> BloomFilter<T, H> {
         (-m / k * (1. - ones / m).ln()) as usize
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.bits.is_empty()
+    }
+
     pub fn clear(&mut self) {
         self.bits.clear();
     }
