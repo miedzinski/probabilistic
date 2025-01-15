@@ -1,4 +1,5 @@
 use crate::hash::Hashes;
+use crate::set_membership::SetMembership;
 use fixedbitset::FixedBitSet;
 use std::f64::consts::LN_2;
 use std::fmt::{Debug, Formatter};
@@ -60,12 +61,12 @@ impl<T, H> BloomFilter<T, H> {
     }
 }
 
-impl<T, H> BloomFilter<T, H>
+impl<T, H> SetMembership<T> for BloomFilter<T, H>
 where
     T: Hash,
     H: BuildHasher,
 {
-    pub fn contains(&self, item: &T) -> bool {
+    fn contains(&self, item: &T) -> bool {
         let mut hashes = Hashes::new(
             item,
             self.bits.len() as u64,
@@ -75,7 +76,7 @@ where
         hashes.all(|h| self.bits.contains(h))
     }
 
-    pub fn insert(&mut self, item: &T) -> bool {
+    fn insert(&mut self, item: &T) -> bool {
         let hashes = Hashes::new(
             item,
             self.bits.len() as u64,
