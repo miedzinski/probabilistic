@@ -44,7 +44,23 @@ where
     H: BuildHasher,
 {
     pub fn count(&self) -> f64 {
-        todo!()
+        let (v, z) = self.registers.iter().fold((0, 0.), |(v, z), register| {
+            (
+                v + if register == 0 { 1 } else { 0 },
+                z + 1. / (1 << register) as f64,
+            )
+        });
+        let m = self.registers.count as f64;
+        let estimate = self.alpha() * m * m * z;
+        let two_pow_32 = (1u64 << 32) as f64;
+
+        if estimate <= 2.5 * m && v > 0 {
+            m * (m / v as f64).ln()
+        } else if estimate > two_pow_32 / 30f64 {
+            -two_pow_32 * (1. - (estimate / two_pow_32)).ln()
+        } else {
+            estimate
+        }
     }
 
     pub fn insert(&mut self, item: &T) {
@@ -52,6 +68,19 @@ where
         let index = (hash >> (64 - self.precision)) as usize;
         let zeros = ((hash << self.precision) | (1 << (self.precision - 1))).leading_zeros();
         self.registers.update_max(index, zeros as u8 + 1);
+    }
+
+    fn alpha(&self) -> f64 {
+        let m = self.registers.count();
+        if m >= 128 {
+            0.7213 / (1. + 1.079 / m as f64)
+        } else if m == 64 {
+            0.709
+        } else if m == 32 {
+            0.697
+        } else {
+            0.673
+        }
     }
 }
 
@@ -85,6 +114,10 @@ impl<const N: usize> Registers<N> {
         }
     }
 
+    fn count(&self) -> usize {
+        self.count
+    }
+
     fn iter(&self) -> impl Iterator<Item = u8> + '_ {
         (0..self.count).map(move |index| {
             // SAFETY: `index` is bound by registers count
@@ -94,8 +127,8 @@ impl<const N: usize> Registers<N> {
 
     fn update_max(&mut self, index: usize, value: u8) {
         assert!(index < self.count, "index out of bounds");
+        // SAFETY: just checked that `index` is in bounds
         unsafe {
-            // SAFETY: just checked that `index` is in bounds
             let current = self.get_unchecked(index);
             if value > current {
                 self.set_unchecked(index, value);
