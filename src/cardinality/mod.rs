@@ -1,3 +1,4 @@
+mod hash_set;
 pub mod hll;
 pub mod linear_count;
 
