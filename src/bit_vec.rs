@@ -19,10 +19,10 @@ where
 
         assert!(size > 0, "size must be > 0");
         // Allocate 1 extra word for safe indexing word pairs.
-        let num_bytes = (((N * size) as f64) / Self::WORD_SIZE as f64).ceil() as usize + 1;
+        let num_words = (((N * size) as f64) / Self::WORD_SIZE as f64).ceil() as usize + 1;
 
         Self {
-            buf: vec![T::zero(); num_bytes],
+            buf: vec![T::zero(); num_words],
             size,
         }
     }
@@ -105,6 +105,7 @@ impl_ushl!(u128);
 impl_ushl!(usize);
 
 #[cfg(test)]
+#[allow(clippy::unusual_byte_groupings)]
 mod tests {
     use super::*;
 
