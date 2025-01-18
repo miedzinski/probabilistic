@@ -1,3 +1,5 @@
+#![feature(unbounded_shifts)]
+
 mod bit_vec;
 pub mod cardinality;
 pub mod cms;

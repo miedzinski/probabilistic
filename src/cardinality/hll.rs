@@ -5,7 +5,7 @@ use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
 
 pub struct HyperLogLog<T, H> {
-    registers: BitVec<6>,
+    registers: BitVec<u8, 6>,
     precision: usize,
     build_hasher: H,
     _phantom: PhantomData<T>,
@@ -40,7 +40,7 @@ impl<T, H> HyperLogLog<T, H> {
     }
 
     fn alpha(&self) -> f64 {
-        let m = self.registers.count();
+        let m = self.registers.size();
         if m >= 128 {
             0.7213 / (1. + 1.079 / m as f64)
         } else if m == 64 {
@@ -65,7 +65,7 @@ where
                 z + 1. / (1 << register) as f64,
             )
         });
-        let m = self.registers.count() as f64;
+        let m = self.registers.size() as f64;
         let estimate = self.alpha() * m * m * z;
         let two_pow_32 = (1u64 << 32) as f64;
 
