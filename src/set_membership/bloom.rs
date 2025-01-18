@@ -1,4 +1,4 @@
-use crate::hash::Hashes;
+use crate::hash::iter_hashes;
 use crate::set_membership::SetMembership;
 use fixedbitset::FixedBitSet;
 use std::f64::consts::LN_2;
@@ -67,23 +67,17 @@ where
     H: BuildHasher,
 {
     fn contains(&self, item: &T) -> bool {
-        let mut hashes = Hashes::new(
-            item,
-            self.bits.len() as u64,
-            self.num_hashes,
-            &self.build_hasher,
-        );
-        hashes.all(|h| self.bits.contains(h))
+        iter_hashes(item, &self.build_hasher)
+            .take(self.num_hashes)
+            .all(|h| self.bits.contains(h as usize % self.bits.len()))
     }
 
     fn insert(&mut self, item: &T) -> bool {
-        let hashes = Hashes::new(
-            item,
-            self.bits.len() as u64,
-            self.num_hashes,
-            &self.build_hasher,
-        );
-        !hashes.fold(true, |acc, bit| acc & self.bits.put(bit))
+        !iter_hashes(item, &self.build_hasher)
+            .take(self.num_hashes)
+            .fold(true, |acc, h| {
+                acc & self.bits.put(h as usize % self.bits.len())
+            })
     }
 }
 

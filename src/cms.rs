@@ -1,5 +1,5 @@
-use crate::hash::Hashes;
-use num_traits::{Unsigned, WrappingAdd};
+use crate::hash::iter_hashes;
+use num_traits::{SaturatingAdd, Unsigned};
 use std::f64::consts::E;
 use std::fmt::{Debug, Formatter};
 use std::hash::{BuildHasher, Hash};
@@ -61,14 +61,15 @@ where
 impl<T, H, C> CountMinSketch<T, H, C>
 where
     T: Hash,
-    C: Clone + Ord + Unsigned + WrappingAdd,
+    C: Clone + Ord + SaturatingAdd + Unsigned,
     H: BuildHasher,
 {
     pub fn count(&self, item: &T) -> C {
-        Hashes::new(item, self.width as u64, self.depth, &self.build_hasher)
+        iter_hashes(item, &self.build_hasher)
+            .take(self.depth)
             .enumerate()
             .map(|(i, hash)| {
-                let idx = self.width * i + hash;
+                let idx = self.width * i + (hash as usize % self.width);
                 self.counters[idx].clone()
             })
             .min()
@@ -76,10 +77,10 @@ where
     }
 
     pub fn increment(&mut self, item: &T, count: &C) {
-        let hashes = Hashes::new(item, self.width as u64, self.depth, &self.build_hasher);
+        let hashes = iter_hashes(item, &self.build_hasher).take(self.depth);
         for (i, hash) in hashes.enumerate() {
-            let idx = self.width * i + hash;
-            self.counters[idx] = self.counters[idx].wrapping_add(count);
+            let idx = self.width * i + (hash as usize % self.width);
+            self.counters[idx] = self.counters[idx].saturating_add(count);
         }
     }
 }
