@@ -152,15 +152,15 @@ impl std::error::Error for NotEnoughSpace {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::ThreadRng;
+    use rand::rngs::mock::StepRng;
     use std::hash::{BuildHasherDefault, DefaultHasher};
 
     fn make_filter<const FINGERPRINT_SIZE: usize>(
         num_buckets: usize,
         bucket_size: usize,
-    ) -> CuckooFilter<i32, FINGERPRINT_SIZE, BuildHasherDefault<DefaultHasher>, ThreadRng> {
+    ) -> CuckooFilter<i32, FINGERPRINT_SIZE, BuildHasherDefault<DefaultHasher>, StepRng> {
         let build_hasher = BuildHasherDefault::<DefaultHasher>::default();
-        let rng = rand::thread_rng();
+        let rng = StepRng::new(29, 97);
         CuckooFilter::<_, FINGERPRINT_SIZE, _, _>::new(num_buckets, bucket_size, build_hasher, rng)
     }
 
