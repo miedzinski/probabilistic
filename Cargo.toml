@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 fixedbitset = "0.5"
 num-traits = "0.2"
+rand = "0.8"

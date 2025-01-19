@@ -1,6 +1,7 @@
 use crate::hash::iter_hashes;
 use crate::set_membership::SetMembership;
 use fixedbitset::FixedBitSet;
+use std::convert::Infallible;
 use std::f64::consts::LN_2;
 use std::fmt::{Debug, Formatter};
 use std::hash::{BuildHasher, Hash};
@@ -66,18 +67,19 @@ where
     T: Hash,
     H: BuildHasher,
 {
+    type InsertError = Infallible;
+
     fn contains(&self, item: &T) -> bool {
         iter_hashes(item, &self.build_hasher)
             .take(self.num_hashes)
             .all(|h| self.bits.contains(h as usize % self.bits.len()))
     }
 
-    fn insert(&mut self, item: &T) -> bool {
-        !iter_hashes(item, &self.build_hasher)
-            .take(self.num_hashes)
-            .fold(true, |acc, h| {
-                acc & self.bits.put(h as usize % self.bits.len())
-            })
+    fn insert(&mut self, item: &T) -> Result<(), Self::InsertError> {
+        for h in iter_hashes(item, &self.build_hasher).take(self.num_hashes) {
+            self.bits.insert(h as usize % self.bits.len());
+        }
+        Ok(())
     }
 }
 

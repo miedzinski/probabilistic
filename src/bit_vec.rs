@@ -84,7 +84,8 @@ where
             *lsb = (*lsb & !(mask.as_() << offset)) | (value.as_() << offset);
 
             let msb = self.buf.get_unchecked_mut(byte_index + i + 1);
-            *msb = (*msb & !(mask.as_() >> (8 - offset))) | (value.as_() >> (8 - offset));
+            *msb = (*msb & !(mask.as_().ushr(8 - offset as u32)))
+                | (value.as_().ushr(8 - offset as u32));
         }
     }
 
@@ -97,9 +98,10 @@ where
     }
 }
 
-// TODO: Replace this once uXX::unbounded_shl stabilizes and num-traits provides corresponding trait.
+// TODO: Replace this once uXX::unbounded_sh* stabilize and num-traits provides corresponding traits.
 pub trait UnboundedShift {
     fn ushl(self, rhs: u32) -> Self;
+    fn ushr(self, rhs: u32) -> Self;
 }
 
 macro_rules! impl_shift {
@@ -107,6 +109,10 @@ macro_rules! impl_shift {
         impl UnboundedShift for $t {
             fn ushl(self, rhs: u32) -> Self {
                 self.unbounded_shl(rhs)
+            }
+
+            fn ushr(self, rhs: u32) -> Self {
+                self.unbounded_shr(rhs)
             }
         }
     };
